@@ -38,6 +38,8 @@ metadata
 		capability "Configuration"
 		capability "Alarm"
 		capability "Sensor"
+		
+		command "associate"
         
         command "setBackLightLevel"
         attribute "lastUpdate", "string"
@@ -64,7 +66,10 @@ preferences {
     input("ReportTime", "number", title: "Report Timeout Interval?", description: "The time in minutes after which an update is sent?", defaultValue: 180, required: false)
     input("TempOffset", "number", title: "Temperature Offset/Adjustment -10 to +10 in Degrees?",range: "-10..10", description: "If your temperature is innacurate this will offset/adjust it by this many degrees.", defaultValue: 0, required: false)
     input("HumidOffset", "number", title: "Humidity Offset/Adjustment -10 to +10 in percent?",range: "-10..10", description: "If your humidty is innacurate this will offset/adjust it by this percent.", defaultValue: 0, required: false)
-   }
+    input "group", "number", title: "Association group", description: "", defaultValue: 1, required: true, displayDuringSetup: false
+	input "deviceId", "string", title: "Target switch device network ID", required: false, displayDuringSetup: false
+	   
+}
 
 	simulator 
 	{
@@ -343,6 +348,10 @@ sendEvent(name: "lastUpdate", value: now, descriptionText: "Configured: $now")
         /* report a humidity change of 5 percent */
         zwave.configurationV1.configurationSet(parameterNumber: 8, size: 1, scaledConfigurationValue: settings.HumidChangeAmount).format()
 	]) 
+	
+	if (settings.deviceId) {
+		associate(settings.deviceId, settings.group ? settings.group as Integer : 1)
+	}
     
 }
    
@@ -420,4 +429,16 @@ if (settings.TempChangeAmount < 1)
     response(configure())
 }  
  
-  
+def associate(target, group = 2) {
+	if (target instanceof String) {
+		def cmds = target.findAll(/[0-9a-fA-F]{2}/) { id -> zwave.associationV1.associationSet(groupingIdentifier:group, nodeId:Integer.parseInt(id, 16)).format() }
+		log.debug "Accessory switch associate $target cmd $cmds"
+		return delayBetween(cmds)
+	} else if (target instanceof Integer) {
+		return zwave.associationV1.associationSet(groupingIdentifier:group, nodeId:target.id).format()
+	} else if (target.id) {
+		return zwave.associationV1.associationSet(groupingIdentifier:group, nodeId:Integer.parseInt(target.id, 16)).format()
+	} else {
+		log.warn "couldn't associate $device.displayName with $target"
+	}
+}
